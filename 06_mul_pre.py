@@ -145,97 +145,7 @@ def plot_combined_chart(x, y, savefigname,image_name):
 def denormalize(predicted_values, min_val, max_val):
     original_values = predicted_values * (max_val - min_val) + min_val
     return original_values
-'''
-#######第一种自注意力机制
-# 定义自定义注意力层
-class ScaledDotProductAttention(tf.keras.layers.Layer):
-    def __init__(self, d_model, num_heads, attention_dropout=0.0):
-        super(ScaledDotProductAttention, self).__init__()
-        self.num_heads = num_heads
-        self.d_model = d_model
 
-        self.q_dense = tf.keras.layers.Dense(d_model)
-        self.k_dense = tf.keras.layers.Dense(d_model)
-        self.v_dense = tf.keras.layers.Dense(d_model)
-
-        self.attention_dropout = tf.keras.layers.Dropout(attention_dropout)
-
-    def split_heads(self, x, batch_size):
-        x = tf.reshape(x, (batch_size, -1, self.num_heads, self.d_model // self.num_heads))
-        return tf.transpose(x, perm=[0, 2, 3, 1])
-
-    def call(self, q, k, v, mask=None):
-        batch_size = tf.shape(q)[0]
-
-        q = self.q_dense(q)
-        k = self.k_dense(k)
-        v = self.v_dense(v)
-
-        q = self.split_heads(q, batch_size)
-        k = self.split_heads(k, batch_size)
-        v = self.split_heads(v, batch_size)
-
-        attention_scores = tf.matmul(q, k, transpose_b=True) / (self.d_model ** 0.5)
-
-        if mask is not None:
-            attention_scores = attention_scores * (1 - tf.cast(mask, dtype=attention_scores.dtype))
-
-        attention_probs = tf.nn.softmax(attention_scores, axis=-1)
-        attention_probs = self.attention_dropout(attention_probs)
-
-        context = tf.matmul(attention_probs, v)
-
-        context = tf.transpose(context, perm=[0, 3, 1, 2])
-        context = tf.reshape(context, (batch_size, -1, self.d_model))
-
-        return context
-
-class SelfAttentionLayer(tf.keras.layers.Layer):
-    def __init__(self, d_model, num_heads, attention_dropout=0.0):
-        super(SelfAttentionLayer, self).__init__()
-        self.multi_head_attention = ScaledDotProductAttention(d_model, num_heads, attention_dropout)
-        self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-
-    def call(self, inputs, mask=None):
-        attention_output = self.multi_head_attention(inputs, inputs, inputs, mask)
-        return self.layer_norm(attention_output + inputs)
-
-class SelfAttentionModel(tf.keras.Model):
-    def __init__(self, d_model, num_heads):
-        super(SelfAttentionModel, self).__init__()
-        self.d_model = d_model
-        self.num_heads = num_heads
-        self.self_attention = SelfAttentionLayer(d_model, num_heads)
-
-    def call(self, inputs):
-        return self.self_attention(inputs)
-        
-
-# 特征融合
-model = SelfAttentionModel(512, 4)
-model2 = SelfAttentionModel(1024, 8)
-image_features_3 = np.reshape(image_features, (1, image_features.shape[0], 512))  #1024
-output_image = model(image_features_3)
-fits_features_3 = np.reshape(fits_features, (1, fits_features.shape[0], 1024))
-output_fits = model2(fits_features_3)
-print(output_image.shape)
-print(output_fits.shape)
-image_features_2 = np.reshape(output_image, (output_image.shape[1], 512))  #1024
-fits_features_2 = np.reshape(output_fits, (output_fits.shape[1], 1024))   #1024
-print(image_features_2.shape)
-print(fits_features_2.shape)
-merged_features = tf.keras.layers.Concatenate()([image_features_2, fits_features_2])
-
-
-merged_feature = tf.keras.layers.Concatenate()([image_features, fits_features])
-model = SelfAttentionModel(1536,8)
-out_features = np.reshape(merged_feature, (1, merged_feature.shape[0], 1536))
-output_mer = model(out_features)
-merged_features = np.reshape(output_mer, (output_mer.shape[1], 1536))
-
-print("Output merged_features Shape:", merged_features.shape)
-
-'''
 
 folder_name = 'model_4_2/att3_model2_2/1_6_conv'
 i=1
@@ -298,188 +208,7 @@ for i in range(Y.shape[1]):
     Y[:, i] = scaler[i].transform(Y[:, i])
 
 '''
-'''
-######使用3w数据 结果为0.16
-class AttentionFusion(tf.keras.layers.Layer):
-    def __init__(self, num_heads, key_dim):
-        super(AttentionFusion, self).__init__()
-        self.multi_head_attention = MultiHeadAttention(num_heads=num_heads, key_dim=key_dim)
-        self.norm_image = LayerNormalization()
-        self.norm_spectral = LayerNormalization()
-        self.dropout = Dropout(0.1)
 
-    def call(self, image_features, spectral_features):
-        # 扩展维度以适应多头自注意力的输入
-        image_features_proj = tf.expand_dims(image_features, axis=1)  # (batch_size, 1, 1024)
-        spectral_features_proj = tf.expand_dims(spectral_features, axis=1)  # (batch_size, 1, 1024)
-
-        # 对图像特征应用自注意力
-        attention_output_image = self.multi_head_attention(query=image_features_proj, key=spectral_features_proj, value=spectral_features_proj)
-        attention_output_image = self.norm_image(attention_output_image + image_features_proj)
-
-        # 对光谱特征应用自注意力
-        attention_output_spectral = self.multi_head_attention(query=spectral_features_proj, key=image_features_proj, value=image_features_proj)
-        attention_output_spectral = self.norm_spectral(attention_output_spectral + spectral_features_proj)
-
-        # 融合图像和光谱特征（加权求和）
-        fused_features = attention_output_image + attention_output_spectral
-
-        # 融合后的特征取消扩展的维度
-        fused_features = tf.squeeze(fused_features, axis=1)
-
-        # 加入 dropout 进行正则化
-        fused_features = self.dropout(fused_features)
-
-        return fused_features
-image_features = tf.cast(image_features, tf.float32)
-X_fits = tf.cast(X_fits, tf.float32)
-
-
-# 注意力融合
-num_heads = 8  # 设置多头注意力的头数
-key_dim = 1024  # 特征维度保持 1024
-fusion_layer = AttentionFusion(num_heads=num_heads, key_dim=key_dim)
-merged_features = fusion_layer(image_features, X_fits)
-'''
-'''
-### 分开处理
-class AttentionFusion(tf.keras.layers.Layer):
-    def __init__(self, num_heads, key_dim):
-        super(AttentionFusion, self).__init__()
-        self.num_heads = num_heads
-        self.key_dim = key_dim
-        self.multi_head_attention = MultiHeadAttention(num_heads=self.num_heads, key_dim=self.key_dim)
-        self.norm_image = LayerNormalization()
-        self.norm_spectral = LayerNormalization()
-        self.dropout = Dropout(0.1)
-    
-    def compute_attention_weights(self, features):
-        # 计算每个特征中的非0值数量
-        non_zero_counts = tf.reduce_sum(tf.cast(features != 0, dtype=tf.float32), axis=-1, keepdims=True)
-        # 计算注意力权重，权重是非0值的比例
-        attention_weights = non_zero_counts / tf.reduce_sum(non_zero_counts)
-        return attention_weights
-    
-    def process_image_attention(self, image_features, spectral_features):
-        image_features_proj = tf.expand_dims(image_features, axis=1)  
-        spectral_features_proj = tf.expand_dims(spectral_features, axis=1)
-        attention_output_image = self.multi_head_attention(query=image_features_proj, key=spectral_features_proj, value=spectral_features_proj)
-        #attention_output_image = tf.squeeze(attention_output_image, axis=1)
-     
-        # 计算图像特征的注意力权重
-        #attention_weights = self.compute_attention_weights(image_features)
-        # 将注意力权重应用到输出上
-        #attention_weights_expanded = tf.expand_dims(attention_weights, axis=-1) 
-        #attention_output_image = attention_output_image * attention_weights_expanded
-        attention_output_image = self.norm_image(attention_output_image + image_features_proj)
-        return attention_output_image
-
-    def process_spectral_attention(self, image_features, spectral_features):
-        image_features_proj = tf.expand_dims(image_features, axis=1)
-        spectral_features_proj = tf.expand_dims(spectral_features, axis=1)
-
-        attention_output_spectral = self.multi_head_attention(query=spectral_features_proj, key=image_features_proj, value=image_features_proj)
-        # 计算光谱特征的注意力权重
-        #attention_weights = self.compute_attention_weights(spectral_features)
-        
-        # 将注意力权重应用到输出上
-        #attention_weights_expanded = tf.expand_dims(attention_weights, axis=-1) 
-        #attention_output_spectral = attention_output_spectral * attention_weights_expanded
-        attention_output_spectral = self.norm_spectral(attention_output_spectral + spectral_features_proj)
-
-        return attention_output_spectral
-
-    def call(self, image_features, spectral_features):
-        # 图像注意力处理
-        #attention_output_image = self.process_image_attention(image_features, spectral_features)
-        # 光谱注意力处理
-        #attention_output_spectral = self.process_spectral_attention(image_features, spectral_features)
-
-        # 融合图像和光谱特征
-        #fused_features = attention_output_image + attention_output_spectral
-        fused_features = image_features + spectral_features
-        #print("fused_features shape:", fused_features.shape)
-        fused_features = tf.squeeze(fused_features, axis=1)
-        
-        # 加入dropout
-        fused_features = self.dropout(fused_features)
-
-        return fused_features
-'''
-'''
-#交互注意力
-class AttentionFusion(tf.keras.layers.Layer):
-    def __init__(self, num_heads, key_dim):
-        super(AttentionFusion, self).__init__()
-        self.num_heads = num_heads
-        self.key_dim = key_dim
-        self.multi_head_attention = MultiHeadAttention(num_heads=self.num_heads, key_dim=self.key_dim)
-        self.norm_image = LayerNormalization()
-        self.norm_spectral = LayerNormalization()
-        self.dropout = Dropout(0.1)
-
-    def compute_attention_weights(self, features):
-        # 计算每个特征中的非0值数量
-        non_zero_counts = tf.reduce_sum(tf.cast(features != 0, dtype=tf.float32), axis=-1, keepdims=True)
-        # 计算注意力权重，权重是非0值的比例
-        attention_weights = non_zero_counts / tf.reduce_sum(non_zero_counts)
-        return attention_weights
-
-    def process_image_attention(self, image_features, spectral_features):
-        image_features_proj = tf.expand_dims(image_features, axis=1)  
-        spectral_features_proj = tf.expand_dims(spectral_features, axis=1)
-        attention_output_image = self.multi_head_attention(
-            query=image_features_proj,
-            key=spectral_features_proj,
-            value=spectral_features_proj
-        )
-        
-        # 计算图像特征的注意力权重
-        #attention_weights = self.compute_attention_weights(image_features)
-        # 将注意力权重应用到输出上
-        #attention_weights_expanded = tf.expand_dims(attention_weights, axis=-1) 
-        #attention_output_image = attention_output_image * attention_weights_expanded
-        
-        attention_output_image = self.norm_image(attention_output_image + image_features_proj)
-        return attention_output_image
-
-    def process_spectral_attention(self, image_features, spectral_features):
-        image_features_proj = tf.expand_dims(image_features, axis=1)
-        spectral_features_proj = tf.expand_dims(spectral_features, axis=1)
-
-        attention_output_spectral = self.multi_head_attention(
-            query=spectral_features_proj,
-            key=image_features_proj,
-            value=image_features_proj
-        )
-        
-        # 计算光谱特征的注意力权重
-        #attention_weights = self.compute_attention_weights(spectral_features)
-        # 将注意力权重应用到输出上
-        #attention_weights_expanded = tf.expand_dims(attention_weights, axis=-1) 
-        #attention_output_spectral = attention_output_spectral * attention_weights_expanded
-        
-        attention_output_spectral = self.norm_spectral(attention_output_spectral + spectral_features_proj)
-        return attention_output_spectral
-
-    def call(self, image_features, spectral_features):
-        # 图像注意力处理
-        attention_output_image = self.process_image_attention(image_features, spectral_features)
-        
-        # 光谱注意力处理
-        attention_output_spectral = self.process_spectral_attention(image_features, spectral_features)
-        
-        # 融合图像和光谱特征
-        fused_features = attention_output_image + attention_output_spectral
-        
-        fused_features = tf.squeeze(fused_features, axis=1)
-        
-        # 加入dropout
-        fused_features = self.dropout(fused_features)
-
-        return fused_features
-
-'''
 
 class AttentionFusion(tf.keras.layers.Layer):
     def __init__(self, num_heads, key_dim):
@@ -519,8 +248,6 @@ class AttentionFusion(tf.keras.layers.Layer):
 
         return fused_features
 
-        
-
 # 模型加载与特征提取
 model_A = load_model("02images_pre_result/galaxy_image_model.h5", custom_objects={'coeff_determination': coeff_determination})
 #model_A = load_model("model_3_1024_2/galaxy_image_model.h5", custom_objects={'coeff_determination': coeff_determination})
@@ -537,7 +264,8 @@ gc.collect()
 
 image_features = tf.cast(image_features, tf.float32)
 spectral_features = tf.cast(X_fits, tf.float32)
-# 定义分批处理的调用  分批处理，没有中间结果保存
+
+# 定义分批处理的调用
 def process_with_batching(image_features, spectral_features, batch_size=2048):
     # 实例化 AttentionFusion 层
     fusion_layer = AttentionFusion(num_heads=8, key_dim=1024)
@@ -564,55 +292,6 @@ fused_features = process_with_batching(image_features, spectral_features, batch_
 # 输出结果形状
 print(f"Fused features shape (with batching): {fused_features.shape}")
 
-
-'''
-###分开处理,将中间结果进行保存
-num_heads = 8
-key_dim = 1024
-
-fusion_layer = AttentionFusion(num_heads=num_heads, key_dim=key_dim)
-attention_output_image_1 = fusion_layer.process_image_attention(images_features[:30000], spectral_features[:30000])
-attention_output_image_2 = fusion_layer.process_image_attention(images_features[30000:], spectral_features[30000:])
-attention_output_image = tf.concat([attention_output_image_1,attention_output_image_2],axis=0)
-#attention_output_image = fusion_layer.process_image_attention(images_features, spectral_features)
-np.save(f"{folder_name}/attention_output_image.npy", attention_output_image.numpy())  # 保存图像特征
-
-# 释放内存
-del attention_output_image
-gc.collect() 
-
-# 第二步: 处理光谱特征
-attention_output_spectral = fusion_layer.process_spectral_attention(images_features, spectral_features)
-np.save(f"{folder_name}/attention_output_spectral.npy", attention_output_spectral.numpy())  # 保存光谱特征
-# 释放内存
-del attention_output_spectral
-gc.collect()
-
-# 从文件中加载保存的结果
-image_attention_output = np.load(f"{folder_name}/attention_output_image.npy")
-spectral_attention_output = np.load(f"{folder_name}/attention_output_spectral.npy")
-
-# 将加载的数据转换为Tensor
-image_attention_output = tf.convert_to_tensor(image_attention_output, dtype=tf.float32)
-spectral_attention_output = tf.convert_to_tensor(spectral_attention_output, dtype=tf.float32)
-print("image_attention_output shape:", image_attention_output.shape)
-print("spectral_attention_output shape:", spectral_attention_output.shape)
-
-merged_features = fusion_layer.call(image_attention_output, spectral_attention_output)
-
-print("Fused features shape:", merged_features.shape)
-'''
-'''
-# 注意力融合
-image_features = tf.cast(image_features, tf.float32)
-X_fits = tf.cast(X_fits, tf.float32)
-num_heads = 8  # 设置多头注意力的头数
-key_dim = 1024  # 特征维度保持 1024
-fusion_layer_image = Attention_image(num_heads=num_heads, key_dim=key_dim)
-#  不进行批处理
-#merged_features = fusion_layer(image_features, X_fits)
-'''
-
 '''
 # 逐个归一化
 normalized_arr = np.zeros_like(data)  # 初始化一个归一化后的数组
@@ -635,24 +314,8 @@ def min_max_normalize(array):
 X = min_max_normalize(data)
 print(X[123].max())
 print(X[123].min())
-'''
-from sklearn.preprocessing import RobustScaler
-from scipy import stats
 
-# 计算每个特征的中位数
-X = np.copy(normalized_arr)
-for i in range(normalized_arr.shape[1]):
-    median = np.median(normalized_arr[:, i])
-    # 将离群值替换为中位数
-    X[np.abs(stats.zscore(normalized_arr[:, i])) > 3, i] = median
 
-# 再次检测离群值
-z_scores = np.abs(stats.zscore(X))
-outliers = np.where(z_scores > 3)
-
-print(f'Number of outliers after replacing: {len(outliers[0])}')
-'''
-'''
 ####模型
 np.random.seed(42)
 tf.random.set_seed(42)
@@ -678,69 +341,9 @@ model.compile(optimizer=optimizers.Adam(learning_rate=0.0001),
               metrics=[coeff_determination])
 
 model.summary()
-'''
 
-'''
 
-model = models.Sequential()
-model.add(layers.Conv1D(64,3, input_shape=((X.shape[1], 1)), activation='relu',kernel_regularizer=l2(0.001)))
-model.add(layers.MaxPooling1D(2))
-model.add(layers.Conv1D(128,3, activation='relu',kernel_regularizer=l2(0.001)))
-model.add(layers.MaxPooling1D(2))
-#model.add(Dropout(0.1)
-model.add(layers.Conv1D(256,3, activation='relu',kernel_regularizer=l2(0.001)))
-model.add(layers.MaxPooling1D(2))
-# 展平层
-model.add(layers.Flatten())
-# 全连接层
-model.add(layers.Dense(1024, activation='relu'))
-#model.add(layers.Dense(512, activation='relu'))
-# 输出层 (2维)
-model.add(layers.Dense(2, activation='linear'))
 
-# 编译模型
-#model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-model.compile(optimizer=optimizers.Adam(learning_rate=0.0001), loss='mean_squared_error', metrics=[coeff_determination])
-# 打印模型摘要
-model.summary()
-'''
-#x_train = np.array(x_train).reshape(-1, X.shape[1], 1).astype("float32")
-#x_test = np.array(x_test).reshape(-1, X.shape[1], 1).astype("float32")
-
-'''
-print("x_train.shape:", x_train.shape)
-print("y_train.shape:", y_train.shape)
-history = []
-start = time.time()
-history = model.fit(x_train, y_train, epochs=100, batch_size=64,validation_split=1/9, verbose=2)
-
-end = time.time()
-
-model.save(folder_name + '/galaxy_mul_model.h5')
-
-history_df = pd.DataFrame(history.history)
-history_df.to_csv(folder_name + '/history_2para.csv', index=False)
-
-# 绘制并保存训练过程中的损失图表
-val_loss = history.history['val_loss']
-loss = history.history['loss']
-# # 从CSV文件中读取进行图表的绘制
-# val_loss = history_df['val_loss']
-# loss = history_df['loss']
-
-plt.plot(loss, label='loss')
-plt.plot(val_loss, label='val_loss')
-plt.title('model loss')
-plt.ylabel('loss')
-plt.xlabel('epoch')
-plt.legend(['train', 'valid'], loc='upper left')
-plt.savefig(folder_name + '/loss.png')
-plt.close()
-t = end - start
-print('Running time: %s Seconds' % (end - start))
-with open(folder_name + '/modelsummary_mul.txt', 'w') as f:
-    model.summary(print_fn=lambda x:f.write(x+'\n'))
-'''
 # 加载模型并对测试集进行预测 
 model = tf.keras.models.load_model(folder_name +"/galaxy_mul_model.h5", custom_objects={'coeff_determination': coeff_determination})
 y_pred_ = model.predict(x_test)
@@ -830,7 +433,7 @@ for i in range(4):
 
 # 打开文件以写入模式，如果文件不存在会自动创建
 with open(folder_name + '/评估指标.txt', 'w', encoding='utf-8') as file:
-    #file.write(f'time: {t}s\n')
+    file.write(f'time: {t}s\n')
     for i in range(4):
         if i%2==1:
             file.write('原始数据\n')
@@ -844,5 +447,3 @@ with open(folder_name + '/评估指标.txt', 'w', encoding='utf-8') as file:
         file.write(f'MAPE: {mape_values[i]:.4f}\n')
         file.write(f'SD: {sd_values[i]:.4f}\n')
         file.write('\n')
-
-
