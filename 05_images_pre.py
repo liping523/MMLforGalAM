@@ -184,14 +184,7 @@ for index, row in df.iterrows():
 
 X = np.array(images)
 Y = labels_data
-'''
-Y = np.array(Y).reshape(-1, Y.shape[1], 1).astype("float32")
-# 对标签值进行归一化处理
-scaler = list(range(Y.shape[1]))
-for i in range(Y.shape[1]):
-    scaler[i] = MinMaxScaler().fit(Y[:, i])
-    Y[:, i] = scaler[i].transform(Y[:, i])
-'''
+
 def min_max_normalize(arr):
     # 计算每个特征的最小值和最大值
     min_val = arr.min(axis=0)
@@ -207,7 +200,7 @@ x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.1, random_
 
 np.random.seed(42)
 tf.random.set_seed(42)
-'''
+
 start = time.time()
 # 利用二维卷积网络进行回归预测
 # 构建新的CNN模型
@@ -284,7 +277,7 @@ t = end - start
 print('Running time: %s Seconds' % (end - start))
 with open(folder_name +'/modelsummary_images.txt', 'w') as f:
     model.summary(print_fn=lambda x:f.write(x+'\n'))
-'''
+
 
 # 加载模型并对测试集进行预测folder_name +
 model = tf.keras.models.load_model("02images_pre_result/galaxy_image_model.h5", custom_objects={'coeff_determination': coeff_determination})
@@ -376,7 +369,7 @@ for i in range(4):
 
 # 打开文件以写入模式，如果文件不存在会自动创建
 with open(folder_name + '/评估指标.txt', 'w', encoding='utf-8') as file:
-    #file.write(f't:{t:.4f}\n')
+    file.write(f't:{t:.4f}\n')
     for i in range(4):
         if i%2==1:
             file.write('原始数据\n')
