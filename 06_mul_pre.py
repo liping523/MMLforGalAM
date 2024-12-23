@@ -342,7 +342,36 @@ model.compile(optimizer=optimizers.Adam(learning_rate=0.0001),
 
 model.summary()
 
+history = []
+start = time.time()
+history = model.fit(x_train, y_train, epochs=100, batch_size=64,validation_split=1/9, verbose=2)
 
+end = time.time()
+
+model.save(folder_name + '/galaxy_mul_model.h5')
+
+history_df = pd.DataFrame(history.history)
+history_df.to_csv(folder_name + '/history_2para.csv', index=False)
+
+# 绘制并保存训练过程中的损失图表
+val_loss = history.history['val_loss']
+loss = history.history['loss']
+# # 从CSV文件中读取进行图表的绘制
+# val_loss = history_df['val_loss']
+# loss = history_df['loss']
+
+plt.plot(loss, label='loss')
+plt.plot(val_loss, label='val_loss')
+plt.title('model loss')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+plt.legend(['train', 'valid'], loc='upper left')
+plt.savefig(folder_name + '/loss.png')
+plt.close()
+t = end - start
+print('Running time: %s Seconds' % (end - start))
+with open(folder_name + '/modelsummary_mul.txt', 'w') as f:
+    model.summary(print_fn=lambda x:f.write(x+'\n'))
 
 # 加载模型并对测试集进行预测 
 model = tf.keras.models.load_model(folder_name +"/galaxy_mul_model.h5", custom_objects={'coeff_determination': coeff_determination})
